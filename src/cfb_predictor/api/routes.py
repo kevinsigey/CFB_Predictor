@@ -34,7 +34,7 @@ from ..features.build import DEFAULT_BLOCKS
 from ..features import player_usage, power_ratings
 from ..models import game_outcome, manifest, player_props, qb_passing_td, season_projection
 from ..odds import value_bets
-from ..tracking import store
+from ..tracking import prop_grading, store
 
 router = APIRouter(prefix="/api")
 
@@ -810,6 +810,50 @@ def get_track_record_picks():
     `games.per_pick`, served on their own so the summary can defer them."""
     games = _full_track_record().get("games") or {}
     return {"per_pick": games.get("per_pick") or []}
+
+
+_prop_grading_cache: dict | None = None
+_prop_grading_cached_at: float = 0.0
+_PROP_GRADING_TTL_SECONDS = 300
+
+
+def _player_team_map() -> dict[str, str]:
+    """player_id -> team, from the public snapshot's prop rows.
+
+    The tracking store never recorded a player's team (the snapshot tick
+    mapped team -> game at record time and stored only the game), so the
+    snapshot -- the one published place a prop row carries its player's
+    team -- is the source. Later weeks win: `recent_team` is the player's
+    current side, and a graded row is only placed when that side is one
+    of its game's two teams (see tracking/prop_grading.py).
+    """
+    teams: dict[str, str] = {}
+    snap = _public_snapshot()
+    for week in (snap.get("weeks") or {}).values():
+        for row in (week or {}).get("player_props") or []:
+            player_id, team = row.get("player_id"), row.get("recent_team")
+            if player_id and team:
+                teams[str(player_id)] = team
+    return teams
+
+
+@router.get("/prop-grading")
+def get_prop_grading():
+    """Every counted, pre-kickoff player projection for the most recent
+    completed game days, graded against the actual box score -- the
+    per-pick counterpart of the track record's per-market MAE, mirroring
+    NBA's prop grading. Computed from the tracking store only (never a
+    live pipeline, never a fetch) and cached on a short TTL: the payload
+    changes only when a game reconciles, and a Saturday slate is ~1,600
+    graded rows the reader should not pay to rebuild per visit."""
+    global _prop_grading_cache, _prop_grading_cached_at
+    now = time.time()
+    if _prop_grading_cache is not None and now - _prop_grading_cached_at < _PROP_GRADING_TTL_SECONDS:
+        return _prop_grading_cache
+    payload = prop_grading.build_prop_grading(_player_team_map())
+    _prop_grading_cache = payload
+    _prop_grading_cached_at = now
+    return payload
 
 
 @router.get("/kalshi-feed")
