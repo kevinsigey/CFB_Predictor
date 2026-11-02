@@ -769,11 +769,47 @@ def _get_player_props_live(season: int, week: int):
         logger.exception("Failed to load player props for season=%s week=%s", season, week)
         return []
 
-@router.get("/track-record")
-def get_track_record():
+def _full_track_record() -> dict:
     result = store.get_track_record()
     result["calibration"] = store.get_calibration()
     return result
+
+
+def _drop_per_pick_rows(result: dict) -> dict:
+    """Strip the row-level pick lists from a track-record payload, in place.
+
+    Only `games.per_pick` and `player_props.per_pick` go; every summary field
+    stays exactly what the full payload carries. Those rows are the bulk of
+    the payload -- this service's full record ran to ~5.8 MB, essentially
+    all of it `player_props.per_pick` rows no surface renders -- and are
+    served from `/track-record/picks` for the one reader action that needs
+    them: opening the every-pick fold.
+    """
+    for section in ("games", "player_props"):
+        block = result.get(section)
+        if isinstance(block, dict):
+            block.pop("per_pick", None)
+    return result
+
+
+@router.get("/track-record")
+def get_track_record(picks: str | None = None):
+    result = _full_track_record()
+    if picks == "deferred":
+        # Payload-split contract with the Sports frontend (Sports_Predictor
+        # PR #81): the summary without the row-level picks. Any other value --
+        # or none -- keeps the historical full payload, so a consumer that
+        # predates the split sees no change at all.
+        _drop_per_pick_rows(result)
+    return result
+
+
+@router.get("/track-record/picks")
+def get_track_record_picks():
+    """The row-level game picks the full `/track-record` payload inlines as
+    `games.per_pick`, served on their own so the summary can defer them."""
+    games = _full_track_record().get("games") or {}
+    return {"per_pick": games.get("per_pick") or []}
 
 
 @router.get("/kalshi-feed")
