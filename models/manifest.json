@@ -41,19 +41,79 @@
   "total_sigma": 16.227224426131006,
   "yardage_metrics": {
     "passing_yards": {
-      "n_train": 25352
+      "n_train": 25352,
+      "holdout_mae": 68.42230039268838,
+      "naive_mae": 70.26789127837516,
+      "n_holdout": 8928,
+      "n_naive": 8928,
+      "holdout": {
+        "kind": "walk_forward_seasons",
+        "val_seasons": [
+          2024,
+          2025
+        ],
+        "min_train_seasons": 6
+      }
     },
     "rushing_yards": {
-      "n_train": 80694
+      "n_train": 80694,
+      "holdout_mae": 22.053236853932198,
+      "naive_mae": 23.724716842620428,
+      "n_holdout": 28606,
+      "n_naive": 28606,
+      "holdout": {
+        "kind": "walk_forward_seasons",
+        "val_seasons": [
+          2024,
+          2025
+        ],
+        "min_train_seasons": 6
+      }
     },
     "receiving_yards": {
-      "n_train": 122725
+      "n_train": 122725,
+      "holdout_mae": 19.094942899551175,
+      "naive_mae": 20.496824371602344,
+      "n_holdout": 43351,
+      "n_naive": 43351,
+      "holdout": {
+        "kind": "walk_forward_seasons",
+        "val_seasons": [
+          2024,
+          2025
+        ],
+        "min_train_seasons": 6
+      }
     },
     "carries": {
-      "n_train": 93230
+      "n_train": 93230,
+      "holdout_mae": 3.239899103921089,
+      "naive_mae": 3.2917511441241234,
+      "n_holdout": 32849,
+      "n_naive": 32849,
+      "holdout": {
+        "kind": "walk_forward_seasons",
+        "val_seasons": [
+          2024,
+          2025
+        ],
+        "min_train_seasons": 6
+      }
     },
     "receptions": {
-      "n_train": 126987
+      "n_train": 126987,
+      "holdout_mae": 1.2382361390335266,
+      "naive_mae": 1.2880474120313603,
+      "n_holdout": 44855,
+      "n_naive": 44855,
+      "holdout": {
+        "kind": "walk_forward_seasons",
+        "val_seasons": [
+          2024,
+          2025
+        ],
+        "min_train_seasons": 6
+      }
     }
   },
   "artifact_fingerprint": {

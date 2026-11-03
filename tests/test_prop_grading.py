@@ -151,15 +151,20 @@ def test_stat_without_a_published_mae_is_ungraded_never_invented(models_dir):
     assert rushing and all(r["grade"] is None for r in rushing)
 
 
-def test_committed_manifest_publishes_no_holdout_mae_so_no_grades():
-    """The repo's real manifest records only n_train per yardage market:
-    every stat must come back unjudged rather than banded by a number
-    nobody measured."""
+def test_committed_manifest_publishes_real_holdout_maes_so_grades_light_up():
+    """The repo's real manifest publishes a walk-forward holdout MAE and
+    naive MAE per yardage market (measured by
+    `models.manifest.publish_yardage_holdout_metrics`): every stat comes
+    back judged by a number that was actually measured out of sample,
+    and the slate's rows carry grades."""
     _slate()
     payload = prop_grading.build_prop_grading()
-    assert all(figures == {"holdout_mae": None, "naive_mae": None}
-               for figures in payload["stats"].values())
-    assert all(r["grade"] is None for r in _rows(_day(payload, "2026-10-31")))
+    assert set(payload["stats"]) == set(prop_grading.STATS)
+    for figures in payload["stats"].values():
+        assert figures["holdout_mae"] is not None and figures["holdout_mae"] > 0
+        assert figures["naive_mae"] is not None and figures["naive_mae"] > 0
+    rows = _rows(_day(payload, "2026-10-31"))
+    assert rows and all(r["grade"] is not None for r in rows)
 
 
 def test_most_confident_ranks_by_departure_from_the_causal_rolling_baseline(models_dir):
