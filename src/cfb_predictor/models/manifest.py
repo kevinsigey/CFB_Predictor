@@ -11,7 +11,7 @@ import pandas as pd
 from ..config import MODELS_DIR
 from ..data import games as games_data
 from ..data import player_stats
-from ..evaluate import walk_forward
+from ..evaluate import player_walk_forward, walk_forward
 from ..data import cfbd_advanced
 from ..features import build as feature_build
 from ..features.build import DEFAULT_BLOCKS
@@ -241,6 +241,19 @@ def train_all(
         _save_pickle(model, path)
         yardage_metrics[market] = {"n_train": int(len(subset))}
 
+    # Holdout figures for the same markets, measured AFTER the production
+    # fits and without touching them: each fold refits the production
+    # regressor on earlier seasons only and scores a season it never saw
+    # (`evaluate/player_walk_forward.py`), so the manifest publishes an
+    # honest out-of-sample error scale per market — the scale the prop
+    # grader bands live picks by. A market no fold could score keeps its
+    # bare `n_train` entry and stays unbanded: a missing number, never an
+    # invented one.
+    holdout_metrics = _yardage_holdout(player_train_df, player_feature_cols, len(seasons))
+    for market, figures in holdout_metrics.items():
+        if market in yardage_metrics:
+            yardage_metrics[market] = {**yardage_metrics[market], **figures}
+
     manifest = {
         "trained_at": datetime.now(timezone.utc).isoformat(),
         "seasons": sorted(int(s) for s in seasons),
@@ -263,6 +276,47 @@ def train_all(
 
 def _stored_total_spec(spec: dict) -> dict:
     return {"kind": spec["kind"], "blocks": list(spec["blocks"]), "feature_cols": total_spec_columns(spec)}
+
+
+def _yardage_holdout(player_train_df: pd.DataFrame, player_feature_cols: list[str], n_seasons: int) -> dict:
+    """Walk-forward holdout figures for the yardage markets.
+
+    `min_train_seasons` matches this module's game folds (`train_all` and
+    `fit_total` both use `max(1, len(seasons) - 2)`): with the usual eight
+    training seasons the measured holdout is the last two, each fitted on
+    six-plus earlier seasons — the same evidentiary standard the game
+    model's published sigma already stands on.
+    """
+    return player_walk_forward.yardage_holdout_metrics(
+        player_train_df, player_feature_cols, min_train_seasons=max(1, n_seasons - 2)
+    )
+
+
+def publish_yardage_holdout_metrics() -> dict:
+    """Measure the yardage holdout and patch ONLY `yardage_metrics` in the manifest.
+
+    The measurement counterpart of `retrain_total_only`'s patch discipline,
+    one step further: no model is refitted for shipping at all — the
+    walk-forward fits exist only to be scored and are discarded — so every
+    pickle, the `trained_at` stamp (and with it `model_version`) and every
+    other manifest key are left exactly as committed. The data is loaded on
+    the manifest's own seasons through the same calls `train_all` makes,
+    and the frame gets `train_all`'s exact row handling, so the published
+    figures describe the training universe the shipped models were fitted
+    on, measured the way `train_all` itself now measures it.
+    """
+    manifest = load_manifest()
+    seasons = manifest["seasons"]
+    games_df = games_data.load_training_data(seasons)
+    player_df_raw = player_stats.fetch_weekly_player_stats(seasons, games_df)
+    player_train_df, player_feature_cols = player_usage.build_player_training_frame(player_df_raw)
+    player_train_df = player_train_df.dropna(subset=player_feature_cols, how="all")
+    holdout_metrics = _yardage_holdout(player_train_df, player_feature_cols, len(seasons))
+    for market, figures in holdout_metrics.items():
+        if market in manifest["yardage_metrics"]:
+            manifest["yardage_metrics"][market] = {**manifest["yardage_metrics"][market], **figures}
+    MANIFEST_PATH.write_text(json.dumps(manifest, indent=2))
+    return manifest
 
 
 def retrain_total_only() -> dict:
@@ -461,4 +515,9 @@ def load_models() -> dict:
 if __name__ == "__main__":
     import sys
 
-    retrain_total_only() if "--total-only" in sys.argv else train_all()
+    if "--total-only" in sys.argv:
+        retrain_total_only()
+    elif "--yardage-holdout-only" in sys.argv:
+        publish_yardage_holdout_metrics()
+    else:
+        train_all()

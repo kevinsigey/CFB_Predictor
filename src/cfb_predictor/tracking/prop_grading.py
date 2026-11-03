@@ -24,14 +24,17 @@ it publishes one). Bands, identical to NBA's:
 * ``Off``           -- |actual - projected| <= 2.0 x MAE
 * ``Way off``       -- beyond that
 
-The current manifest publishes only `n_train` per yardage market -- no
-holdout MAE was ever recorded for these models -- so today every grade is
-None and the deltas stand unjudged. A stat with no published MAE has no
-grade: the row is served with its delta and `grade=None`, never judged
-against an invented band (and never against the track record's live MAE,
-which is measured over the very picks it would be judging). If a future
-retrain publishes holdout figures into the manifest, the bands light up
-on their own.
+Training publishes a walk-forward `holdout_mae` (and the naive baseline's
+`naive_mae`) per yardage market into the manifest -- fitted on earlier
+seasons, scored on a season the fit never saw
+(`evaluate/player_walk_forward.py`, wired into `train_all` and backfilled
+onto an existing manifest by `publish_yardage_holdout_metrics`) -- so the
+band is a number actually measured out of sample. A stat whose manifest
+entry carries no such figure (a manifest written before the measurement
+existed) has no grade: the row is served with its delta and `grade=None`,
+never judged against an invented band (and never against the track
+record's live MAE, which is measured over the very picks it would be
+judging).
 
 **Most confident.** The section ranks a day's projections by how far the
 model moved from the player's own rolling average -- |projected -
@@ -125,11 +128,11 @@ def prop_bands(models_dir: Path) -> tuple[dict[str, float], dict[str, float]]:
     Read from `models/manifest.json`'s `yardage_metrics` -- the artifact
     `models/manifest.py::train_all` writes at fit time. The band is what a
     projection has to miss by before it counts as wrong, so it must be a
-    number a training run actually measured on held-out data. Today's
-    manifest records only `n_train` per market, so both dicts come back
-    empty and every grade is None (see the module docstring); a manifest
-    that publishes `holdout_mae`/`mae` (and `naive_mae`) figures is picked
-    up verbatim, per stat, with no other change.
+    number a training run actually measured on held-out data: the
+    walk-forward `holdout_mae`/`mae` (and `naive_mae`) figures are picked
+    up verbatim, per stat, with no other change. A manifest entry without
+    them (written before the measurement existed) contributes nothing, so
+    that stat's rows grade None rather than borrow another stat's scale.
     """
     path = Path(models_dir) / "manifest.json"
     try:

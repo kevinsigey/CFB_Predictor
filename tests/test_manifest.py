@@ -73,6 +73,31 @@ def test_train_all_writes_a_manifest_with_chosen_candidate(monkeypatch, tmp_path
     assert (tmp_path / "rushing_yards_model.pkl").exists()
 
 
+def test_train_all_publishes_yardage_holdout_figures(monkeypatch, tmp_path):
+    """The yardage entries carry the walk-forward holdout figures next to
+    n_train: fit on earlier seasons only, scored on the last two — the
+    honest error scale the prop grader bands by."""
+    from cfb_predictor import config
+
+    monkeypatch.setattr(config, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(manifest, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(manifest, "MANIFEST_PATH", tmp_path / "manifest.json")
+
+    seasons = [2021, 2022, 2023, 2024]
+    monkeypatch.setattr(manifest.games_data, "load_training_data", lambda s: _fake_games(seasons))
+    monkeypatch.setattr(manifest.games_data, "fetch_fbs_teams", _fake_fbs_teams)
+    monkeypatch.setattr(manifest.player_stats, "fetch_weekly_player_stats", _fake_player_stats)
+
+    result = manifest.train_all(seasons=seasons, total_spec=None)
+
+    figures = result["yardage_metrics"]["rushing_yards"]
+    assert figures["n_train"] > 0
+    assert figures["n_holdout"] == 10  # the fake RB's 2023 + 2024 rows, five weeks each
+    assert figures["holdout_mae"] >= 0
+    assert figures["naive_mae"] is not None and figures["naive_mae"] >= 0
+    assert figures["holdout"]["val_seasons"] == [2023, 2024]
+
+
 def test_load_models_round_trips_after_train_all(monkeypatch, tmp_path):
     from cfb_predictor import config
 

@@ -1,0 +1,68 @@
+name: Measure yardage holdout
+
+# Dispatch-only backfill/re-measurement for the yardage models' holdout
+# MAEs (`python -m cfb_predictor.models.manifest --yardage-holdout-only`):
+# walk-forward fits on earlier seasons scored on seasons they never saw,
+# patched into models/manifest.json's yardage_metrics -- the error scale
+# the prop grader bands live picks by. Future retrains measure this
+# inline in train_all; this workflow exists for manifests already shipped
+# without the figures.
+#
+# It runs here, not on a dev machine, for the same reason the snapshot
+# refresh does: this is where the CFBD secret and the warm data/cache
+# live, and CI is the only place CFBD calls should happen.
+#
+# The measured manifest is committed to the `yardage-holdout-metrics`
+# branch, NEVER to main: the numbers land on main in one reviewed commit
+# together with the prop-grading test pin that describes them, so no
+# commit on main ever pairs new figures with a test asserting the old
+# all-null state (or vice versa).
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      # Same warm-cache arrangement as refresh-public-snapshot.yml: each
+      # season's games/player-stats fetch is cached to its own file, so a
+      # re-measure reads most seasons from disk instead of CFBD.
+      - name: Restore data cache
+        uses: actions/cache@v6
+        with:
+          path: data/cache
+          key: data-cache-${{ github.run_id }}
+          restore-keys: |
+            data-cache-
+
+      - name: Measure the yardage holdout
+        env:
+          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+        run: python -m cfb_predictor.models.manifest --yardage-holdout-only
+
+      - name: Commit measured manifest to the metrics branch
+        run: |
+          if git diff --quiet -- models/manifest.json; then
+            echo "No change: the manifest already carries these figures."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B yardage-holdout-metrics
+          git add models/manifest.json
+          git commit -m "Measure yardage holdout metrics [automated]"
+          git push -f origin yardage-holdout-metrics
