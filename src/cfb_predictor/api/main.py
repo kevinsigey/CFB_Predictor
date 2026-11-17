@@ -11,6 +11,7 @@ load_dotenv()  # This loads variables from your .env file into os.environ
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import PlainTextResponse
 
 from ..config import PUBLIC_MODE, PUBLIC_SNAPSHOT_POLL_SECONDS, TRACKING_DB_BACKUP_PATH, TRACKING_DB_PATH
@@ -111,6 +112,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Track-record and prop payloads are large, repetitive JSON; gzip cuts them
+# several-fold for any client that sends Accept-Encoding: gzip.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 @app.exception_handler(Exception)

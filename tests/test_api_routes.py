@@ -639,15 +639,23 @@ def split_client(client, monkeypatch):
     return client
 
 
-def test_track_record_default_still_inlines_per_pick_rows(split_client):
+def test_track_record_default_inlines_game_rows_but_not_prop_rows(split_client):
     response = split_client.get("/api/track-record")
 
     assert response.status_code == 200
     body = response.json()
+    # The frontend reads games.per_pick; no surface reads player_props.per_pick.
     assert body["games"]["per_pick"] == _SPLIT_RECORD["games"]["per_pick"]
-    assert body["player_props"]["per_pick"] == _SPLIT_RECORD["player_props"]["per_pick"]
+    assert "per_pick" not in body["player_props"]
     assert body["games"]["n_resolved"] == 2
     assert body["calibration"] == {"winner": []}
+
+
+def test_track_record_detail_per_pick_opts_in_to_prop_rows(split_client):
+    body = split_client.get("/api/track-record?detail=per_pick").json()
+
+    assert body["games"]["per_pick"] == _SPLIT_RECORD["games"]["per_pick"]
+    assert body["player_props"]["per_pick"] == _SPLIT_RECORD["player_props"]["per_pick"]
 
 
 def test_track_record_deferred_omits_rows_and_keeps_summary_identical(split_client):
