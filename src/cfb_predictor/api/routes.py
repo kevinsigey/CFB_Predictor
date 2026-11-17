@@ -770,38 +770,40 @@ def _get_player_props_live(season: int, week: int):
         return []
 
 def _full_track_record() -> dict:
-    result = store.get_track_record()
-    result["calibration"] = store.get_calibration()
-    return result
+    # A new top-level dict: the record itself is memoised in the store and
+    # must not be written to here.
+    return {**store.get_track_record(), "calibration": store.get_calibration()}
 
 
-def _drop_per_pick_rows(result: dict) -> dict:
-    """Strip the row-level pick lists from a track-record payload, in place.
-
-    Only `games.per_pick` and `player_props.per_pick` go; every summary field
-    stays exactly what the full payload carries. Those rows are the bulk of
-    the payload -- this service's full record ran to ~5.8 MB, essentially
-    all of it `player_props.per_pick` rows no surface renders -- and are
-    served from `/track-record/picks` for the one reader action that needs
-    them: opening the every-pick fold.
+def _without_per_pick(result: dict, sections: tuple[str, ...]) -> dict:
+    """`result` with `per_pick` removed from the named sections. Copies the
+    sections it touches rather than popping, so the memoised record is untouched.
+    Every summary field is carried over unchanged.
     """
-    for section in ("games", "player_props"):
-        block = result.get(section)
-        if isinstance(block, dict):
-            block.pop("per_pick", None)
-    return result
+    out = dict(result)
+    for section in sections:
+        block = out.get(section)
+        if isinstance(block, dict) and "per_pick" in block:
+            out[section] = {key: value for key, value in block.items() if key != "per_pick"}
+    return out
 
 
 @router.get("/track-record")
-def get_track_record(picks: str | None = None):
+def get_track_record(picks: str | None = None, detail: str | None = None):
     result = _full_track_record()
     if picks == "deferred":
         # Payload-split contract with the Sports frontend (Sports_Predictor
-        # PR #81): the summary without the row-level picks. Any other value --
-        # or none -- keeps the historical full payload, so a consumer that
-        # predates the split sees no change at all.
-        _drop_per_pick_rows(result)
-    return result
+        # PR #81): the summary without either row-level pick list.
+        return _without_per_pick(result, ("games", "player_props"))
+    if picks == "inline" or detail == "per_pick":
+        # Opt-in: the full record, including the ~21k `player_props.per_pick`
+        # rows, which is ~98% of the payload.
+        return result
+    # Default: everything the Sports_Predictor frontend reads. That includes
+    # `games.per_pick` (the every-pick fold on the track-record page), so it
+    # stays. `player_props.per_pick` is read by no surface and goes behind
+    # `?detail=per_pick`.
+    return _without_per_pick(result, ("player_props",))
 
 
 @router.get("/track-record/picks")

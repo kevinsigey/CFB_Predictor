@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pandas as pd
 
@@ -325,7 +326,44 @@ def backfill_unresolved_games(games_data_module) -> int:
     return reconcile_game_predictions(finished[["game_id", "home_score", "away_score"]])
 
 
+def _db_version() -> tuple:
+    """Changes on every write to the tracking DB: the main file and its WAL."""
+    db = Path(TRACKING_DB_PATH)
+    stamps = []
+    for path in (db, db.with_name(db.name + "-wal")):
+        try:
+            st = path.stat()
+            stamps.append((st.st_mtime_ns, st.st_size))
+        except FileNotFoundError:
+            stamps.append(None)
+    return tuple(stamps)
+
+
+_memo: dict[str, tuple[tuple, object]] = {}
+
+
+def _memoised_on_db_version(name: str, build):
+    """Return `build()`, reusing the last result while the DB version is unchanged.
+
+    The version is read BEFORE building, so a write landing mid-build leaves a
+    stale key and the next call simply rebuilds. Callers must not mutate the
+    result; the record is shared between calls.
+    """
+    version = _db_version()
+    hit = _memo.get(name)
+    if hit is not None and hit[0] == version:
+        return hit[1]
+    value = build()
+    _memo[name] = (version, value)
+    return value
+
+
 def get_track_record() -> dict:
+    """Memoised on the DB version; see `_build_track_record` for what it returns."""
+    return _memoised_on_db_version("track_record", _build_track_record)
+
+
+def _build_track_record() -> dict:
     """Aggregate accuracy summary across every reconciled game and player prop -- not a
     per-game list (the frontend already has that in the game detail modal's own verdict
     section; this is the "how good is the model overall" view, same shape as PL_Predictor's
