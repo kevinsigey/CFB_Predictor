@@ -15,6 +15,8 @@ class GameSummary(BaseModel):
     away_team: str
     home_score: int | None = None
     away_score: int | None = None
+    # Kalshi game-winner price (home win prob), latest pre-kickoff snapshot; None when none was recorded.
+    market_home_win_probability: float | None = None
 
 
 class GamePrediction(BaseModel):

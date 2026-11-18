@@ -138,6 +138,86 @@ def write_snapshot(rows: list[dict], out_dir: Path = LINES_DIR, now: datetime | 
     return path
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# The game-winner market as a win probability for one game, from the committed snapshots (never the live API).
+# ---------------------------------------------------------------------------------------------------------------------
+import re
+import unicodedata
+from functools import lru_cache
+from zoneinfo import ZoneInfo
+
+#: Same cut-off as NBA_Predictor's moneyline: a quote wider than this is not a price. Many CFB markets sit at 0.07 / 0.79.
+MAX_SPREAD = 0.08
+#: Kalshi's wording -> CFBD's, after `_norm`. The rest differ only by "St." vs "State", accents and punctuation.
+_ALIAS = {"umass": "massachusetts", "louisianamonroe": "ulmonroe", "appalachianst": "appst", "miamifl": "miami"}
+
+
+def _norm(name: str) -> str:
+    s = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
+    s = re.sub(r"\bstate\b", "st", s)
+    s = re.sub(r"[^a-z0-9]", "", s)
+    return _ALIAS.get(s, s)
+
+
+def _mid(row: dict) -> float | None:
+    bid, ask = row.get("yes_bid"), row.get("yes_ask")
+    if not bid or not ask or ask < bid or ask - bid > MAX_SPREAD:
+        return None
+    return (bid + ask) / 2
+
+
+@lru_cache(maxsize=4)
+def _moneyline_snapshots(lines_dir: str, newest_mtime: float) -> dict:
+    """{(ET date 'YYMMDD', event_ticker): [(snapshot_ts, {norm team name: yes mid})]}, oldest first.
+
+    Only KXNCAAFGAME rows whose event ticker is a KXNCAAFGAME event count: the lines files have held other leagues' rows
+    (NFL games share city names and team codes with CFB schools), and those must never reach a CFB game.
+    """
+    out: dict = {}
+    for path in sorted(Path(lines_dir).glob("kalshi_cfb_lines_*.jsonl.gz")):
+        with gzip.open(path, "rt", encoding="utf-8") as fh:
+            for line in fh:
+                if "KXNCAAFGAME" not in line:
+                    continue
+                r = json.loads(line)
+                event, title = r.get("event_ticker") or "", r.get("title") or ""
+                if r.get("series") != "KXNCAAFGAME" or not event.startswith("KXNCAAFGAME-") or not (r.get("ticker") or "").startswith(event + "-") or not title.endswith(" wins"):
+                    continue
+                snaps = out.setdefault((event.split("-")[1][:7], event), {})
+                snaps.setdefault(r["snapshot_ts"], {})[_norm(title[: -len(" wins")])] = _mid(r)
+    return {k: sorted(v.items()) for k, v in out.items()}
+
+
+def game_win_probability(home: str, away: str, kickoff_utc: str, lines_dir: Path = LINES_DIR) -> float | None:
+    """The market's home win probability from the latest snapshot taken BEFORE kickoff, or None (never defaulted).
+
+    Matched by the ET game date in the KXNCAAFGAME event ticker plus the two team names (both must be in the event; an
+    event that names only one team is matched on that one). Both sides quoted: each yes mid, normalised to sum to 1. One
+    side quoted: that side's mid, the other as its complement. A spread wider than MAX_SPREAD is no quote.
+    """
+    kick = datetime.fromisoformat(kickoff_utc.replace("Z", "+00:00"))
+    if kick.tzinfo is None:
+        kick = kick.replace(tzinfo=timezone.utc)
+    date = kick.astimezone(ZoneInfo("America/New_York")).strftime("%y%b%d").upper()
+    h, a = _norm(home), _norm(away)
+    files = list(Path(lines_dir).glob("kalshi_cfb_lines_*.jsonl.gz"))
+    index = _moneyline_snapshots(str(lines_dir), max((f.stat().st_mtime for f in files), default=0.0))
+    for (d, _event), snaps in index.items():
+        if d != date or not any(h in p or a in p for _, p in snaps):
+            continue
+        for ts, prices in reversed(snaps):
+            if set(prices) - {h, a} or datetime.fromisoformat(ts) >= kick:
+                continue
+            ph, pa = prices.get(h), prices.get(a)
+            if ph is not None and pa is not None:
+                return round(ph / (ph + pa), 4)
+            if ph is not None:
+                return round(ph, 4)
+            if pa is not None:
+                return round(1 - pa, 4)
+    return None
+
+
 def main() -> int:
     rows = collect()
     path = write_snapshot(rows)
