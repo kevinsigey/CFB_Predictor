@@ -75,6 +75,7 @@ export function GamesPage() {
                   <span>
                     {" "}— Home win {Math.round(prediction.home_win_prob * 100)}%
                     {prediction.over_prob != null && ` · Over ${Math.round(prediction.over_prob * 100)}%`}
+                    {" "}· <small>no market line</small>
                   </span>
                 )}
               </button>
