@@ -127,3 +127,13 @@ def test_write_snapshot_appends_one_gzip_file_per_utc_day(tmp_path):
     lines = gzip.open(p1, "rt").read().splitlines()
     assert len(lines) == 2 and json.loads(lines[0])["ticker"] == GAME["ticker"]
     assert kl.write_snapshot([], tmp_path, now) is None
+
+
+def test_normalize_records_the_size_resting_at_each_sides_ask():
+    # Kalshi's public market list carries yes_ask_size_fp and yes_bid_size_fp;
+    # NO's ask is the YES bid from the other side, so it rests on the YES bid size.
+    market = {"title": "A B: 5+ receptions", "floor_strike": 4.5,
+              "yes_ask_size_fp": "774.30", "yes_bid_size_fp": "1.00"}
+    row = kl.normalize(market, "KXTEST", "2026-11-18T00:00:00+00:00")
+    assert (row["yes_ask_size"], row["no_ask_size"]) == (774.3, 1.0)
+    assert kl.normalize({"title": "A B: 5+ receptions"}, "KXTEST", "t")["yes_ask_size"] is None

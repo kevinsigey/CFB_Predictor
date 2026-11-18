@@ -76,6 +76,10 @@ def normalize(market: dict, series: str, snapshot_ts: str) -> dict:
         "last": _dollars(market.get("last_price_dollars")),
         "volume": _dollars(market.get("volume_fp")),
         "open_interest": _dollars(market.get("open_interest_fp")),
+        # Contracts resting at the best ask. Kalshi's NO ask is the YES bid seen
+        # from the other side, so the NO ask's size is the YES bid size.
+        "yes_ask_size": _dollars(market.get("yes_ask_size_fp")),
+        "no_ask_size": _dollars(market.get("yes_bid_size_fp")),
         "status": market.get("status"),
         "result": market.get("result") or None,
         "settlement_value": market.get("expiration_value") or None,
