@@ -116,6 +116,8 @@ export function GameDetailModal({ gameId, onClose }: Props) {
                   {`${Math.round(facts.pick.prob * 100)}%`}
                 </p>
               )}
+              {/* CFB has no game-level market price on any surface it serves, so the model number is the only one. */}
+              {facts.pick && <p className="text-xs text-pr-text-dim">Model · no market line</p>}
             </div>
 
             {facts.record && facts.record.settled > 0 && (
