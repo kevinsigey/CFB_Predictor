@@ -27,6 +27,7 @@ from ..config import (
     PUBLIC_SNAPSHOT_REFRESH_URL,
 )
 from ..data import games as games_data
+from ..data import kalshi_lines
 from ..data import player_stats, sportsbook_api
 from ..data import advanced_stats, cfbd_advanced
 from ..features import build as feature_build
@@ -503,6 +504,9 @@ def _get_games_live(season: int, week: int):
     games = games_data.fetch_week_games(season, week)
     games = games.astype(object).where(pd.notna(games), None)
     records = games.to_dict("records")
+    for record in records:
+        record["market_home_win_probability"] = kalshi_lines.game_win_probability(
+            record["home_team"], record["away_team"], str(record["gameday"]), DATA_DIR / "lines")
 
     # CFBD's Game model carries no spread_line/total_line (see module
     # docstring), unlike nfl_data_py's schedule rows -- without this, the

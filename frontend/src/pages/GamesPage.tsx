@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { GameDetailModal } from "../components/GameDetailModal";
+import { marketFavourite } from "../lib/market";
 import type { GamePrediction, GameSummary } from "../types";
 
 export function GamesPage() {
@@ -14,6 +15,7 @@ export function GamesPage() {
   // row so switching weeks closes it: a modal left open over a list it no longer
   // belongs to is a modal showing a game the reader did not choose.
   const [openGameId, setOpenGameId] = useState<string | null>(null);
+  const openGame = games.find((g) => g.game_id === openGameId);
 
   useEffect(() => {
     setOpenGameId(null);
@@ -60,6 +62,7 @@ export function GamesPage() {
       <ul>
         {games.map((game) => {
           const prediction = predictions[game.game_id];
+          const market = marketFavourite(game);
           return (
             <li key={game.game_id}>
               {/* A real button, not a clickable div: the modal is now the only
@@ -71,11 +74,19 @@ export function GamesPage() {
                 className="text-left"
               >
                 <strong>{game.away_team} @ {game.home_team}</strong> — {new Date(game.gameday).toLocaleDateString()}
+                {/* The market leads, the model sits beside it. No price, no market figure: never defaulted. */}
+                {market && (
+                  <span className="font-semibold" data-testid="market-headline">
+                    {" "}— Market: {market.team} · {Math.round(market.prob * 100)}%
+                  </span>
+                )}
                 {prediction && (
                   <span>
-                    {" "}— Home win {Math.round(prediction.home_win_prob * 100)}%
+                    {" "}— Model: {market && market.team === game.away_team
+                      ? `${game.away_team} ${Math.round(prediction.away_win_prob * 100)}%`
+                      : `${game.home_team} ${Math.round(prediction.home_win_prob * 100)}%`}
                     {prediction.over_prob != null && ` · Over ${Math.round(prediction.over_prob * 100)}%`}
-                    {" "}· <small>no market line</small>
+                    {!market && <>{" "}· <small>no market line</small></>}
                   </span>
                 )}
               </button>
@@ -83,7 +94,7 @@ export function GamesPage() {
           );
         })}
       </ul>
-      {openGameId && <GameDetailModal gameId={openGameId} onClose={() => setOpenGameId(null)} />}
+      {openGameId && <GameDetailModal gameId={openGameId} market={openGame ? marketFavourite(openGame) : null} onClose={() => setOpenGameId(null)} />}
     </div>
   );
 }

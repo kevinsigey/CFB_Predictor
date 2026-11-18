@@ -31,6 +31,8 @@ import type { GameFacts } from "../types";
 
 interface Props {
   gameId: string;
+  /** The market's side and price for this game from the list row; null/absent when no pre-kickoff price exists. */
+  market?: { team: string; prob: number } | null;
   onClose: () => void;
 }
 
@@ -43,7 +45,7 @@ const TIMING_WORDS: Record<GameFacts["pick_timing"], string> = {
   none: "No pick recorded",
 };
 
-export function GameDetailModal({ gameId, onClose }: Props) {
+export function GameDetailModal({ gameId, market, onClose }: Props) {
   const [facts, setFacts] = useState<GameFacts | null>(null);
   const [failed, setFailed] = useState(false);
   const [signals, setSignals] = useState<Signal[]>([]);
@@ -108,6 +110,12 @@ export function GameDetailModal({ gameId, onClose }: Props) {
           <>
             {/* The pick, and the only sentence about it. The probability is the
                 backend's; `pick_timing` is what makes it honest to show. */}
+            {market && (
+              <div className="mb-4" data-testid="market-headline">
+                <div className="text-xs uppercase tracking-wide text-pr-text-dim">Market</div>
+                <div className="text-3xl font-semibold">{market.team} {Math.round(market.prob * 100)}%</div>
+              </div>
+            )}
             <div className="mb-4">
               <p className="text-sm text-pr-text-dim">{TIMING_WORDS[facts.pick_timing]}</p>
               {facts.pick && (
@@ -116,8 +124,9 @@ export function GameDetailModal({ gameId, onClose }: Props) {
                   {`${Math.round(facts.pick.prob * 100)}%`}
                 </p>
               )}
-              {/* CFB has no game-level market price on any surface it serves, so the model number is the only one. */}
-              {facts.pick && <p className="text-xs text-pr-text-dim">Model · no market line</p>}
+              {/* The market leads when a pre-kickoff price exists; the model is the line above, so it is named, not repeated. */}
+              {facts.pick && !market && <p className="text-xs text-pr-text-dim">Model · no market line</p>}
+              {facts.pick && market && <p className="text-xs text-pr-text-dim">Model</p>}
             </div>
 
             {facts.record && facts.record.settled > 0 && (
