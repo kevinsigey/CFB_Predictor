@@ -119,6 +119,10 @@ def snapshot_rows() -> tuple[pd.DataFrame, float | None]:
                     "actual_total": float(game["home_score"]) + float(game["away_score"]),
                 }
             )
+    if not rows:
+        return pd.DataFrame(
+            columns=["season", "week", "game_id", "home_team", "away_team", "pred_total", "actual_total"]
+        ), sigma
     return add_r1(pd.DataFrame(rows)).sort_values(["week", "game_id"]).reset_index(drop=True), sigma
 
 
