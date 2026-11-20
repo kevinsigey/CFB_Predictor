@@ -7,6 +7,12 @@
   run 4.2 points above the actual total on average (sd 14.6).
 - The model learns its scoring level from earlier seasons. No number for the candidate below has been computed.
 
+**Prior test.** `docs/cfb_league_residual_correction.md` (2026-10-22) tried a trailing 300-game league residual
+correction, capped at ±4, on 2026 weeks 4-7 (250 games). It made totals worse, -0.399 [-0.762, -0.033], when the
+bias had the opposite sign (-2.26). That doc asked for a re-run at week 12. This test differs in three ways: it
+uses all of the season's earlier weeks with no cap, it runs on 10+ held-out past seasons rather than one
+snapshot, and its sign is free. The sign flip within 2026 is itself a warning that in-season drift may be noise.
+
 ## Candidate (one, fixed)
 
 **R1, running in-season total bias.** Within each season, for a game in week w:
